@@ -26,6 +26,8 @@ export STICKY_SESSIONS_VERSION=08a395c66e42
 export LUA_CJSON_VERSION=2.1.0.4
 export LUA_RESTY_HTTP_VERSION=0.07
 export LUA_UPSTREAM_VERSION=0.06
+export LUA_SOCKET_VERSION=2.0.2
+export LUA_GUMBO_VERSION=0.4
 export MORE_HEADERS_VERSION=0.32
 export NGINX_DIGEST_AUTH=7955af9c77598c697ac292811914ce1e2b3b824c
 export NGINX_SUBSTITUTIONS=bc58cb11844bc42735bbaef7085ea86ace46d05b
@@ -74,7 +76,12 @@ apt-get update && apt-get install --no-install-recommends -y \
   openssl \
   libluajit-5.1 \
   libluajit-5.1-dev \
+  libgumbo1 \
+  libgumbo-dev \
   linux-headers-generic || exit 1
+
+chmod +x /usr/lib/x86_64-linux-gnu/libgumbo.so.1.0.0
+ln -s /usr/lib/x86_64-linux-gnu/libgumbo.so.1.0.0 /usr/local/lib/libgumbo.so
 
 # download, verify and extract the source files
 get_src 5b73f98004c302fb8e4a172abf046d9ce77739a82487e4873b39f9b0dcbb0d72 \
@@ -113,6 +120,11 @@ get_src 9b1d0075df787338bb607f14925886249bda60b6b3156713923d5d59e99a708b \
 get_src 8eabbcd5950fdcc718bb0ef9165206c2ed60f67cd9da553d7bc3e6fe4e338461 \
         "https://github.com/yaoweibin/ngx_http_substitutions_filter_module/archive/$NGINX_SUBSTITUTIONS.tar.gz"
 
+get_src beeae6296df777508bacde1bb307c9d93311c20d2b76e96b66822347c2329eba \
+        "https://craigbarnes.gitlab.io/lua-gumbo/dist/lua-gumbo-$LUA_GUMBO_VERSION.tar.gz"
+
+get_src 4fd9c775cfd98841299851e29b30176caf289370fea1ff1e00bb67c2d6842ca6 \
+        "http://files.luaforge.net/releases/luasocket/luasocket/luasocket-$LUA_SOCKET_VERSION/luasocket-$LUA_SOCKET_VERSION.tar.gz"
 
 #https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency/
 curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/cloudflare/sslconfig/master/patches/nginx__1.11.5_dynamic_tls_records.patch
@@ -196,6 +208,14 @@ else
 fi
 make LUA_INCLUDE_DIR=${LUA_DIR} && make install
 
+echo "Installing lua socket module"
+cd "$BUILD_PATH/luasocket-$LUA_SOCKET_VERSION"
+make LUAINC=-I${LUA_DIR} && make install
+
+echo "Installing lua gumbo module"
+cd "$BUILD_PATH/lua-gumbo-$LUA_GUMBO_VERSION"
+make LUA_CFLAGS=-I${LUA_DIR} LUA_PC=luajit && make check LUA_PC=luajit LUA=`which luajit` && make install LUA_PC=luajit LUA_LMOD_DIR=/usr/local/share/lua/5.1 LUA_CMOD_DIR=/usr/local/lib/lua/5.1
+
 echo "Installing lua-resty-http module"
 # copy lua module
 cd "$BUILD_PATH/lua-resty-http-$LUA_RESTY_HTTP_VERSION"
@@ -218,6 +238,7 @@ apt-mark unmarkauto \
   libluajit-5.1-2 \
   xz-utils \
   geoip-bin \
+  libgumbo1 \
   openssl
 
 if [[ ${ARCH} == "ppc64le" ]]; then
@@ -236,6 +257,7 @@ apt-get remove -y --purge \
   libluajit-5.1-dev \
   linux-libc-dev \
   perl-modules-5.22 \
+  libgumbo-dev \
   linux-headers-generic
 
 apt-get autoremove -y
