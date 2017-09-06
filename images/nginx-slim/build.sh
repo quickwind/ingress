@@ -28,6 +28,7 @@ export LUA_RESTY_HTTP_VERSION=0.07
 export LUA_UPSTREAM_VERSION=0.06
 export LUA_SOCKET_VERSION=2.0.2
 export LUA_GUMBO_VERSION=0.4
+export LUA_ROCKS_VERSION=2.4.2
 export MORE_HEADERS_VERSION=0.32
 export NGINX_DIGEST_AUTH=7955af9c77598c697ac292811914ce1e2b3b824c
 export NGINX_SUBSTITUTIONS=bc58cb11844bc42735bbaef7085ea86ace46d05b
@@ -42,7 +43,7 @@ get_src()
   url="$2"
   f=$(basename "$url")
 
-  curl -sSL "$url" -o "$f"
+  curl -skSL "$url" -o "$f"
   echo "$hash  $f" | sha256sum -c - || exit 10
   tar xzf "$f"
   rm -rf "$f"
@@ -78,12 +79,16 @@ apt-get update && apt-get install --no-install-recommends -y \
   libluajit-5.1-dev \
   libgumbo1 \
   libgumbo-dev \
+  unzip \
   linux-headers-generic || exit 1
 
 chmod +x /usr/lib/x86_64-linux-gnu/libgumbo.so.1.0.0
 ln -s /usr/lib/x86_64-linux-gnu/libgumbo.so.1.0.0 /usr/local/lib/libgumbo.so
 
 # download, verify and extract the source files
+get_src eef88c2429c715a7beb921e4b1ba571dddb7c74a250fbb0d3cc0d4be7a5865d9 \
+        "https://github.com/luarocks/luarocks/archive/v$LUA_ROCKS_VERSION.tar.gz"
+
 get_src 5b73f98004c302fb8e4a172abf046d9ce77739a82487e4873b39f9b0dcbb0d72 \
         "http://nginx.org/download/nginx-$NGINX_VERSION.tar.gz"
 
@@ -133,6 +138,12 @@ curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/
 curl -sSL -o patch-src-ngx_http_lua_headers.c.diff https://raw.githubusercontent.com/macports/macports-ports/master/www/nginx/files/patch-src-ngx_http_lua_headers.c.diff 
 cd "$BUILD_PATH/lua-nginx-module-$LUA_VERSION" 
 patch -p1 < $BUILD_PATH/patch-src-ngx_http_lua_headers.c.diff 
+
+# build luarocks
+cd "$BUILD_PATH/luarocks-$LUA_ROCKS_VERSION"
+./configure --lua-suffix=jit --with-lua-include=/usr/include/luajit-2.0 || exit 1 \
+&& make build || exit 1 \
+&& make install || exit 1
 
 # build nginx
 cd "$BUILD_PATH/nginx-$NGINX_VERSION"
@@ -223,6 +234,10 @@ sed -i 's/resty.http_headers/http_headers/' $BUILD_PATH/lua-resty-http-$LUA_REST
 cp $BUILD_PATH/lua-resty-http-$LUA_RESTY_HTTP_VERSION/lib/resty/http.lua /usr/local/lib/lua/5.1
 cp $BUILD_PATH/lua-resty-http-$LUA_RESTY_HTTP_VERSION/lib/resty/http_headers.lua /usr/local/lib/lua/5.1
 
+# Install lua PCRE module
+cd "$BUILD_PATH"
+luarocks install lrexlib-pcre || exit 1
+
 echo "Cleaning..."
 
 cd /
@@ -258,6 +273,7 @@ apt-get remove -y --purge \
   linux-libc-dev \
   perl-modules-5.22 \
   libgumbo-dev \
+  unzip \
   linux-headers-generic
 
 apt-get autoremove -y
